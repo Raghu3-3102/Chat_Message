@@ -20,39 +20,51 @@ function App() {
   }, [call.isCalling, call.callStatus, call.targetPhone, call.callType, startCall]);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const initUser = async () => {
       const savedPhone = localStorage.getItem('userPhone');
       if (savedPhone && !currentUser) {
         try {
           const { data } = await api.post('/auth/login', { phoneNumber: savedPhone });
           setCurrentUser(data);
-          socket.emit('join', savedPhone);
-
-          // Fetch initial sessions
-          const sessionsRes = await api.get(`/chat/sessions/${savedPhone}`);
-          const allSessions: any[] = sessionsRes.data;
-          setActiveSessions(allSessions.filter(s => s.status === 'active'));
-          setPendingRequests(allSessions.filter(s => s.status === 'pending'));
         } catch (err) {
           localStorage.removeItem('userPhone');
         }
       }
     };
-    fetchUser();
+    initUser();
+  }, []);
 
-    socket.on('newRequest', (session) => {
-      setPendingRequests([...useChatStore.getState().pendingRequests, session]);
-    });
+  useEffect(() => {
+    if (currentUser) {
+      socket.emit('join', currentUser.phoneNumber);
 
-    socket.on('chatStarted', (session) => {
-      addSession(session);
-    });
+      const fetchSessions = async () => {
+        try {
+          const sessionsRes = await api.get(`/chat/sessions/${currentUser.phoneNumber}`);
+          const allSessions: any[] = sessionsRes.data;
+          setActiveSessions(allSessions.filter(s => s.status === 'active'));
+          setPendingRequests(allSessions.filter(s => s.status === 'pending'));
+        } catch (err) {
+          console.error('Failed to fetch sessions', err);
+        }
+      };
 
-    return () => {
-      socket.off('newRequest');
-      socket.off('chatStarted');
-    };
-  }, [currentUser]);
+      fetchSessions();
+
+      socket.on('newRequest', (session) => {
+        setPendingRequests([...useChatStore.getState().pendingRequests, session]);
+      });
+
+      socket.on('chatStarted', (session) => {
+        addSession(session);
+      });
+
+      return () => {
+        socket.off('newRequest');
+        socket.off('chatStarted');
+      };
+    }
+  }, [currentUser, setActiveSessions, setPendingRequests, addSession]);
 
   if (!currentUser) {
     return <AuthFlow />;

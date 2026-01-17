@@ -10,9 +10,10 @@ interface User {
 interface ChatSession {
     _id: string;
     participants: string[];
-    status: 'pending' | 'active' | 'expired';
-    expiresAt: string;
+    status: 'pending' | 'active' | 'rejected' | 'expired';
     initiatedBy: string;
+    otherName?: string; // Enhanced field for UI
+    otherGender?: string; // Enhanced field for UI
     encryptionKey?: string; // Stored key
 }
 

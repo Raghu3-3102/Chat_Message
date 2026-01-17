@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { User } from './models/User';
 import { ChatSession } from './models/ChatSession';
 import { Message } from './models/Message';
-import { startCleanupJob } from './lib/cleanup';
+// import { startCleanupJob } from './lib/cleanup';
 
 dotenv.config();
 
@@ -88,7 +88,7 @@ app.post('/api/chat/request', async (req, res) => {
             status: { $ne: 'expired' }
         });
 
-        if (session) return res.status(400).json({ error: 'Chat already exists or pending' });
+        if (session) return res.json(session);
 
         session = await ChatSession.create({
             participants: [from, to],
@@ -97,7 +97,14 @@ app.post('/api/chat/request', async (req, res) => {
             encryptionKey
         });
 
-        io.to(to).emit('newRequest', session);
+        const fromUser = await User.findOne({ phoneNumber: from }, 'name gender');
+        const enrichedRequest = {
+            ...session.toObject(),
+            otherName: fromUser?.name,
+            otherGender: fromUser?.gender
+        };
+
+        io.to(to).emit('newRequest', enrichedRequest);
         res.json(session);
     } catch (err) {
         res.status(500).json({ error: 'Request failed' });
@@ -115,7 +122,7 @@ app.post('/api/chat/respond', async (req, res) => {
         session.status = status;
         if (status === 'active') {
             session.acceptedBy = acceptedBy;
-            session.expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins initial
+            // session.expiresAt removed for permanent history
         } else {
             await ChatSession.findByIdAndDelete(sessionId);
             return res.json({ message: 'Request rejected' });
@@ -123,8 +130,23 @@ app.post('/api/chat/respond', async (req, res) => {
 
         await session.save();
 
-        // Notify both parties
-        session.participants.forEach(p => io.to(p).emit('chatStarted', session));
+        // Notify both parties with enriched data
+        const [p1, p2] = session.participants;
+        const [user1, user2] = await Promise.all([
+            User.findOne({ phoneNumber: p1 }, 'name gender'),
+            User.findOne({ phoneNumber: p2 }, 'name gender')
+        ]);
+
+        io.to(p1).emit('chatStarted', {
+            ...session.toObject(),
+            otherName: user2?.name,
+            otherGender: user2?.gender
+        });
+        io.to(p2).emit('chatStarted', {
+            ...session.toObject(),
+            otherName: user1?.name,
+            otherGender: user1?.gender
+        });
 
         res.json(session);
     } catch (err) {
@@ -143,6 +165,34 @@ app.get('/api/messages/:sessionId', async (req, res) => {
     }
 });
 
+// Get All Sessions for a User
+app.get('/api/chat/sessions/:phoneNumber', async (req, res) => {
+    const { phoneNumber } = req.params;
+    try {
+        const sessions = await ChatSession.find({
+            participants: phoneNumber
+        }).lean();
+
+        // Enhance sessions with other participant's details
+        const enhancedSessions = await Promise.all(sessions.map(async (session: any) => {
+            const otherPhone = session.participants.find((p: string) => p !== phoneNumber);
+            if (otherPhone) {
+                const otherUser = await User.findOne({ phoneNumber: otherPhone }, 'name gender');
+                return {
+                    ...session,
+                    otherName: otherUser?.name,
+                    otherGender: otherUser?.gender
+                };
+            }
+            return session;
+        }));
+
+        res.json(enhancedSessions);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch sessions' });
+    }
+});
+
 // Socket logic
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
@@ -158,9 +208,8 @@ io.on('connection', (socket) => {
             const session = await ChatSession.findById(sessionId);
             if (!session || session.status !== 'active') return;
 
-            // Update activity and expiry
+            // Update activity
             session.lastActivity = new Date();
-            session.expiresAt = new Date(Date.now() + 10 * 60 * 1000); // Reset timer
             await session.save();
 
             const message = await Message.create({ sessionId, sender, encryptedContent, iv });
@@ -218,5 +267,5 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    startCleanupJob(io);
+    // startCleanupJob(io);
 });

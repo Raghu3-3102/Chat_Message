@@ -44,7 +44,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, message, t
                                 onClick={onClose}
                                 className="mt-8 w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-black transition-all shadow-xl shadow-slate-200 active:scale-95"
                             >
-                                DONE
+                                DISMISS
                             </button>
                         </div>
 

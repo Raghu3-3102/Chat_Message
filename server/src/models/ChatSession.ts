@@ -2,9 +2,8 @@ import mongoose from 'mongoose';
 
 const chatSessionSchema = new mongoose.Schema({
     participants: [{ type: String, ref: 'User' }], // Array of phone numbers
-    status: { type: String, enum: ['pending', 'active', 'expired'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'active', 'rejected', 'expired'], default: 'pending' },
     lastActivity: { type: Date, default: Date.now },
-    expiresAt: { type: Date },
     initiatedBy: { type: String, required: true },
     acceptedBy: { type: String },
     encryptionKey: { type: String } // Shared key stored in base64

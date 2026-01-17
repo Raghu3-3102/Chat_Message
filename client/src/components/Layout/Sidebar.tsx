@@ -35,17 +35,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectSession, activeSession
             const key = await generateSessionKey();
             const exported = await exportKey(key);
 
-            await api.post('/chat/request', {
+            const { data } = await api.post('/chat/request', {
                 from: currentUser?.phoneNumber,
                 to,
                 encryptionKey: exported
             });
 
-            showModal({
-                title: 'Request Sent',
-                message: `Signal invitation has been transmitted to ${to} successfully.`,
-                type: 'success'
-            });
+            // If it's an existing active session, just select it
+            if (data.status === 'active') {
+                addSession(data);
+                onSelectSession(data._id);
+            } else {
+                showModal({
+                    title: 'Request Sent',
+                    message: `Signal invitation has been transmitted to ${to} successfully.`,
+                    type: 'success'
+                });
+            }
 
             setSearch('');
             setSearchResults([]);
@@ -132,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectSession, activeSession
                         <div className="space-y-2">
                             {searchResults.map(user => {
                                 const existingSession = activeSessions.find(s => s.participants.includes(user.phoneNumber));
-                                const isPending = pendingRequests.some(r => r.initiatedBy === user.phoneNumber);
+                                const isPending = pendingRequests.some(r => r.participants.includes(user.phoneNumber));
 
                                 return (
                                     <div key={user.phoneNumber} className="flex items-center justify-between p-3 md:p-4 bg-blue-50/50 border border-blue-100/50 rounded-[1.5rem] md:rounded-3xl">
@@ -236,12 +242,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectSession, activeSession
                     </section>
                 )}
 
-                {/* Chats List */}
+                {/* Direct Messages Section */}
                 <section>
-                    <h3 className="px-2 md:px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 md:mb-3">Direct Messages</h3>
+                    <div className="flex items-center justify-between px-2 md:px-4 mb-3">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Personal Chats</h3>
+                        <span className="text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase">{activeSessions.length}</span>
+                    </div>
                     <div className="space-y-1">
                         {activeSessions.map(session => {
-                            const otherId = session.participants.find(p => p !== currentUser?.phoneNumber);
+                            const otherId = session.participants.find(p => p !== currentUser?.phoneNumber) || 'Unknown';
                             return (
                                 <div
                                     key={session._id}
@@ -250,14 +259,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectSession, activeSession
                                 >
                                     <div className="relative">
                                         <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-slate-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden flex-shrink-0">
-                                            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${otherId}`} alt="Avatar" />
+                                            <img src={getAvatar(String(session.otherGender || 'male'), String(session.otherName || otherId))} alt="Avatar" />
                                         </div>
                                         <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 md:w-4 md:h-4 bg-green-500 rounded-full border-2 border-white" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-0.5 md:mb-1">
-                                            <p className="font-bold text-slate-900 truncate uppercase text-sm">{otherId}</p>
-                                            <span className="text-[9px] md:text-[10px] text-slate-400 font-medium">12:45 PM</span>
+                                            <p className="font-bold text-slate-900 truncate uppercase text-sm">{session.otherName || otherId}</p>
+                                            <span className="text-[9px] md:text-[10px] text-slate-400 font-medium tracking-tight">Active Path</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <p className="text-[11px] md:text-xs text-slate-500 truncate font-medium">Click to resume encrypted chat...</p>
@@ -281,14 +290,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectSession, activeSession
             {/* Bottom Footer */}
             <div className="p-4 md:p-6 border-t border-slate-100 bg-[#F9FAFB] space-y-3">
                 <div className="flex items-center gap-3 bg-white p-2.5 md:p-3 rounded-2xl border border-slate-200 shadow-sm">
-                    <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Clock className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+                    <div className="hidden sm:flex items-center gap-1.5 md:gap-2 bg-green-50 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-2xl border border-green-100">
+                        <Shield className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-500" />
+                        <span className="text-green-600 font-mono text-[10px] md:text-xs font-black uppercase tracking-widest">Permanent Path</span>
                     </div>
                     <div className="flex-1 min-w-0">
                         <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">Signal Health</p>
                         <p className="text-[11px] md:text-xs font-bold text-slate-900 truncate">Encrypted Path Active</p>
                     </div>
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0" />
                 </div>
 
                 <div className="flex items-center gap-3 bg-slate-900 p-3 rounded-2xl shadow-xl shadow-slate-200">
